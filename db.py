@@ -13,22 +13,27 @@ def getCursor():
         port=1433,
         user=dbConfig["user"],
         password=dbConfig["password"],
-        host='weekataglanse.database.windows.net:1433',
         database=dbConfig["database"]
     )
-    return conn.cursor()
+    return conn.cursor(), conn
 
 def writeSQL(query, cursor=None):
     if cursor == None:
-        cursor = getCursor()
+        cursor, conn = getCursor()
     cursor.execute(query)
-    cursor.commit()
+    conn.commit()
 
-def readSql(query, cursor=None):
+def readSQL(query, cursor=None):
     if cursor == None:
-        cursor = getCursor()
+        cursor, conn = getCursor()
     cursor.execute(query)
     return cursor.fetchall()
 
-
-print(readSql("SELECT * FROM transactionEvents"))
+# writeSQL("CREATE table transactionEvents (id int auto_increment primary key, indItemId,  )")
+# writeSQL("CREATE table individualTransactions (id int identity(1, 1) primary key, indItemId varchar(255), transactionTime datetime)")
+# writeSQL("CREATE table categories (id int identity(1, 1) primary key, siteId varchar(255), description varchar(255))")
+# writeSQL("ALTER table individualEvents add timeTransaction datetime")
+# writeSQL("ALTER table individualItems add category varchar(255)")
+# writeSQL("CREATE table individualItems (id int identity(1, 1) primary key, ncrItemId varchar(255), price float, description varchar(255))")
+# writeSQL("CREATE table individualTransactions (id INT identity(1,1) PRIMARY KEY, indItemId int, transactionTime datetime, category varchar(255), siteId varchar(255),  categoryUserApproved varchar(255)),")
+# print(readSQL("SELECT * from transactionEvents where eventId = 10"))
