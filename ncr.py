@@ -51,3 +51,5 @@ def getSiteById(siteId):
     url = "{}/site/sites/{}".format(baseUrl, siteId)
     response = requests.request("GET", url, headers=headersNoVersion)
     return response.json()
+
+print(getSiteById('7c54465e9f5344598276ec1f941f5a3c'))

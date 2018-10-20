@@ -18,12 +18,14 @@ def getCursor():
     return conn.cursor(), conn
 
 def writeSQL(query, cursor=None):
+    print("writing ", query)
     if cursor == None:
         cursor, conn = getCursor()
     cursor.execute(query)
     conn.commit()
 
 def readSQL(query, cursor=None):
+    print("reading", query)
     if cursor == None:
         cursor, conn = getCursor()
     cursor.execute(query)
@@ -33,7 +35,10 @@ def readSQL(query, cursor=None):
 # writeSQL("CREATE table individualTransactions (id int identity(1, 1) primary key, indItemId varchar(255), transactionTime datetime)")
 # writeSQL("CREATE table categories (id int identity(1, 1) primary key, siteId varchar(255), description varchar(255))")
 # writeSQL("ALTER table individualEvents add timeTransaction datetime")
-# writeSQL("ALTER table individualItems add category varchar(255)")
+# writeSQL("CREATE table entityCategoryMap (id int identity(1,1), categoryId int, entityName varchar(255))")
+# writeSQL("CREATE table sites (id siteId varchar(255), longitude float, latitude float)")
+# writeSQL("CREATE table entityTransactionMap (id int identity(1,1), entityId int, transactionId int)")
+# INSERT into "dbo"."individualTransactions" (indItemId, transactionTime, siteId) values (195, dateadd(S, 1516010280.0, '1970-01-01'), N'7c54465e9f5344598276ec1f941f5a3c' )
 # writeSQL("CREATE table individualItems (id int identity(1, 1) primary key, ncrItemId varchar(255), price float, description varchar(255))")
-# writeSQL("CREATE table individualTransactions (id INT identity(1,1) PRIMARY KEY, indItemId int, transactionTime datetime, category varchar(255), siteId varchar(255),  categoryUserApproved varchar(255)),")
+# writeSQL("CREATE table individualTransactions (id INT identity(1,1) PRIMARY KEY, indItemId int, dayOfWeek int, hourOfDay int, categoryId int, siteId varchar(255),  categoryUserApproved varchar(255))")
 # print(readSQL("SELECT * from transactionEvents where eventId = 10"))
