@@ -2,3 +2,9 @@
 .DS_Store
 config.json
 Config.json
+
+notes
+notes/
+
+__pycache__/
+__pycache__
