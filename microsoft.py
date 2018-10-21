@@ -11,29 +11,40 @@ with open("./Config.json", "r") as fp:
 key = config['microsoftKey']
 taKey = config['microsoftTextKey']
 
+# def generateConceptForTransaction(transactionId):
+
 def generateConceptForTransaction(transactionId):
-    res = db.readSQL("SELECT description, categoryUserApproved FROM individualTransactions join individualItems on individualItems.id = indItemId where individualTransactions.id = {}".format(transactionId))
+    res = db.readSQL("SELECT description, categoryUserApproved, indItemId FROM individualTransactions join individualItems on individualItems.id = indItemId where individualTransactions.id = {}".format(transactionId))
     if len(res) == 0:
         raise Exception("No transaction matching the expected id")
     name = res[0][0]
-    snippets = searchSnippets(name)
+    itemId = res[0][2]
+    snippets = searchSnippets(name, count=5)
     snippets.append(name)
+    # entities = importantEntities(snippets)
+    # for entity in entities.keys():
+    #     snippets += (searchSnippets(entity, count=5))
     entities = importantEntities(snippets)
+    preexistingConcept = None
+
     concept = findMaxInDict(entities)
     concept = re.sub("\'", '', concept)
-    print(res[0][1])
+    concept = re.sub('ā', 'a', concept)
+
     if res[0][1] is None or res[0][1] == "false":
         siteId = db.readSQL("SELECT siteId from individualTransactions where individualTransactions.id = N\'{}\'".format(transactionId))[0][0]
         db.writeSQL("INSERT into categories (siteId, description) VALUES (N\'{}\', N\'{}\')".format(siteId, concept))
         conceptId = db.readSQL("SELECT id FROM categories where siteId = N\'{}\' and description = N\'{}\'".format(siteId, concept))[0][0]
         db.writeSQL("UPDATE individualTransactions SET categoryId = {} where id = {}".format(conceptId, transactionId))
+        for entity in entities:
+            db.writeSQL("INSERT into entityCategoryMap (categoryId, entityName, itemId) values ({}, N\'{}\', {})".format(conceptId, entity, itemId))
         return concept
 
     # return entities[0]
     # for snippet in snippets:
     #     db.writeSQL("INSERT into ")
 
-def searchSnippets(query, count=10):
+def searchSnippets(query, count=5):
     params = {'q' : query, 'count': count}
     headers = {'Ocp-Apim-Subscription-Key': key}
     resp = requests.get("https://api.cognitive.microsoft.com/bing/v7.0/search", params=params, headers=headers)
@@ -56,12 +67,14 @@ def importantEntities(strsToAnalyze):
         i += 1
     resp = requests.request("POST","https://eastus.api.cognitive.microsoft.com/text/analytics/v2.0/entities", json=docs, headers=headers)
     toRet = {}
-    for doc in resp.json()["documents"]:
-        for entity in doc['entities']:
-            if entity['name'] in toRet.keys():
-                toRet[entity['name']] += 1
-            else:
-                toRet[entity['name']] = 1
+    if "documents" in resp.json().keys():
+        for doc in resp.json()["documents"]:
+            for entity in doc['entities']:
+                entity['name'] = re.sub('\'', '', entity['name'])
+                if entity['name'] in toRet.keys():
+                    toRet[entity['name']] += 1
+                else:
+                    toRet[entity['name']] = 1
     return toRet
 
 def findMaxInDict(freqs):

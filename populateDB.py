@@ -8,10 +8,10 @@ import microsoft
 
 siteIds = ["7c54465e9f5344598276ec1f941f5a3c"]
 for siteId in siteIds:
-    # siteData = ncr.getSiteById(siteId)
-    # siteLong = siteData['coordinates']['longitude']
-    # siteLat = siteData['coordinates']['latitude']
-    # db.writeSQL("insert into sites values (N\'{}\', {}, {})".format(siteId, siteLong, siteLat))
+    siteData = ncr.getSiteById(siteId)
+    siteLong = siteData['coordinates']['longitude']
+    siteLat = siteData['coordinates']['latitude']
+    db.writeSQL("insert into sites values (N\'{}\', {}, {})".format(siteId, siteLong, siteLat))
     transactions = ncr.getTransactionsBySite(siteId)
     for transaction in transactions['pageContent']:
         tlogId = transaction['tlogId']
@@ -35,7 +35,7 @@ for siteId in siteIds:
             db.writeSQL(query)
 #
 
-ids = db.readSQL("SELECT id from individualTransactions");
+ids = db.readSQL("SELECT individualTransactions.id from individualTransactions left join categories on categories.id = categoryId where categories.description is null");
 ids = [tranId[0] for tranId in ids]
 for tranId in ids:
     microsoft.generateConceptForTransaction(tranId)

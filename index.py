@@ -5,8 +5,20 @@ import db
 import json
 import microsoft
 from statistics import variance, mean
-
+from flask import send_file
+from flask import Response
+import json
 app = Flask(__name__)
+app.debug = False
+
+
+@app.route('/test')
+def test_endpoint():
+    resp = Response(json.dumps(constants.example))
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.mimetype = 'application/json'
+    return resp
+
 
 @app.route("/health")
 def health():
@@ -65,7 +77,18 @@ def autogenAll():
 def setCategory():
     categoryId = request.json['categoryId']
     transactionId = request.json['transactionId']
-    res = db.writeSQL("UPDATE individualTransactions SET categoryId = {} where id = {}".format(categoryId, transactionId))
+    db.writeSQL("UPDATE individualTransactions SET categoryId = {} where id = {}".format(categoryId, transactionId))
+    db.writeSQL("UPDATE individualTransactions SET categoryUserApproved = N\'yes\' where id = {}".format(transactionId))
+
+    entities = db.readSQL("SELECT id, itemId, categoryId from entityCategoryMap where categoryId = {}")
+    #apply category change to other transactions where human approval not given
+    for entity in entities:
+        otherItemId = entity[1]
+        toFillIn = db.readSQL("SELECT id FROM individualTransactions where indItemId = {} and categoryUserApproved is null".format(otherItemId))
+        for id in toFillIn:
+            transactionId = toFillIn[0]
+            db.writeSQL("UPDATE individualTransactions SET categoryId = {} where id = {}".format(categoryId, transactionId))
+            db.writeSQL("UPDATE individualTransactions SET categoryUserApproved = N\'yes\' where id = {}".format(transactionId))
 
 @app.route("/category", methods=["POST"])
 def createCategory():
@@ -86,6 +109,127 @@ def getCategories(siteid):
         category = request.json['category']
         res = db.writeSQL("INSERT into categories (siteId, description) values ({}, N\'{}\')".format(siteid, category))
 
+@app.route("/transaction/stats/ajax_all", methods=["POST"])
+def ajax_allTransactionData():
+
+    if request.json is not None and "day" in request.json.keys() and "hour" in request.json.keys():
+        day = request.json['day'] #0 - 6
+        hour = request.json['hour'] #0 - 23
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude, individualTransactions.siteId FROM individualTransactions \
+               join individualItems on individualItems.id = individualTransactions.indItemId \
+               join categories on categories.id = individualTransactions.categoryId \
+               join sites on individualTransactions.siteId = sites.id \
+               where dayOfWeek = {} and hourOfDay = {} \
+               group by individualTransactions.siteId, individualTransactions.categoryId, categories.description, longitude, latitude".format(day, hour))
+    else:
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude, individualTransactions.siteId FROM individualTransactions \
+               join individualItems on individualItems.id = individualTransactions.indItemId \
+               join categories on categories.id = individualTransactions.categoryId \
+               join sites on individualTransactions.siteId = sites.id \
+               group by individualTransactions.siteId, individualTransactions.categoryId, categories.description, longitude, latitude")
+    toRet = Dict()
+    i = 0;
+    bySiteId = Dict()
+    for row in data:
+        toRet[i].siteId = row[5]
+        toRet[i].totalSales = row[0]
+        toRet[i].categoryId = row[1]
+        toRet[i].description = row[2]
+        toRet[i].longitude = row[3]
+        toRet[i].latitude = row[4]
+        if row[5] in bySiteId.keys():
+            bySiteId[row[5]].size += row[0]
+            bySiteId[row[5]].cats.append(toRet[i])
+        else:
+            bySiteId[row[5]].size = row[0]
+            bySiteId[row[5]].cats = [toRet[i]]
+        i += 1
+
+    for j in range(i):
+        toRet[j].proportionOfSiteSales = toRet[j].totalSales / bySiteId[toRet[j].siteId].size
+    toRetReally = []
+    for siteId in bySiteId.keys():
+        toappend = {
+            'siteId': siteId,
+            'longitude': bySiteId[siteId].cats[0].longitude,
+            'latitude': bySiteId[siteId].cats[0].latitude,
+            'size': bySiteId[siteId].size,
+            'categories':[]
+        }
+        for cat in bySiteId[siteId].cats:
+            toappend['categories'].append({
+                'title': cat.description,
+                'value': cat.totalSales,
+                'proportion': cat.proportionOfSiteSales
+            })
+        toRetReally.append(toappend)
+    resp = Response(json.dumps(toRetReally))
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.mimetype = 'application/json'
+    return resp
+
+@app.route("/transaction/stats/ajax_all/splitByTime", methods=["POST"])
+def ajax_allTransactionData_splitByTime():
+
+    if request.json is not None and "day" in request.json.keys() and "hour" in request.json.keys():
+        day = request.json['day'] #0 - 6
+        hour = request.json['hour'] #0 - 23
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude, individualTransactions.siteId FROM individualTransactions \
+               join individualItems on individualItems.id = individualTransactions.indItemId \
+               join categories on categories.id = individualTransactions.categoryId \
+               join sites on individualTransactions.siteId = sites.id \
+               where dayOfWeek = {} and hourOfDay = {} \
+               group by individualTransactions.siteId, individualTransactions.categoryId, categories.description, longitude, latitude".format(day, hour))
+    else:
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude, individualTransactions.siteId, dayOfWeek, hourOfDay FROM individualTransactions \
+               join individualItems on individualItems.id = individualTransactions.indItemId \
+               join categories on categories.id = individualTransactions.categoryId \
+               join sites on individualTransactions.siteId = sites.id \
+               group by individualTransactions.siteId, individualTransactions.categoryId, categories.description, longitude, latitude, dayOfWeek, hourOfDay")
+    toRet = Dict()
+    i = 0;
+    bySiteId = Dict()
+    for row in data:
+        toRet[i].siteId = row[5]
+        toRet[i].totalSales = row[0]
+        toRet[i].categoryId = row[1]
+        toRet[i].description = row[2]
+        toRet[i].longitude = row[3]
+        toRet[i].latitude = row[4]
+        toRet[i].day = row[6]
+        toRet[i].hour = row[7]
+        if row[5] in bySiteId.keys():
+            bySiteId[row[5]].size += row[0]
+            bySiteId[row[5]].cats.append(toRet[i])
+        else:
+            bySiteId[row[5]].size = row[0]
+            bySiteId[row[5]].cats = [toRet[i]]
+        i += 1
+
+    for j in range(i):
+        toRet[j].proportionOfSiteSales = toRet[j].totalSales / bySiteId[toRet[j].siteId].size
+    toRetReally = []
+    for siteId in bySiteId.keys():
+        toappend = {
+            'siteId': siteId,
+            'longitude': bySiteId[siteId].cats[0].longitude,
+            'latitude': bySiteId[siteId].cats[0].latitude,
+            'size': bySiteId[siteId].size,
+            'categories':[]
+        }
+        for cat in bySiteId[siteId].cats:
+            toappend['categories'].append({
+                'title': cat.description,
+                'value': cat.totalSales,
+                'proportion': cat.proportionOfSiteSales,
+                'day': cat.day,
+                'week': cat.week
+            })
+        toRetReally.append(toappend)
+    resp = Response(json.dumps(toRetReally))
+    resp.headers['Access-Control-Allow-Origin'] = '*'
+    resp.mimetype = 'application/json'
+    return resp
 @app.route("/transaction/stats/all", methods=["POST"])
 def allTransactionData():
     if "day" in request.json.keys() and "hour" in request.json.keys():

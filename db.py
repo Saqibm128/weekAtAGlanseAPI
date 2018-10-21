@@ -35,7 +35,7 @@ def readSQL(query, cursor=None):
 # writeSQL("CREATE table individualTransactions (id int identity(1, 1) primary key, indItemId varchar(255), transactionTime datetime)")
 # writeSQL("CREATE table categories (id int identity(1, 1) primary key, siteId varchar(255), description varchar(255))")
 # writeSQL("ALTER table individualEvents add timeTransaction datetime")
-# writeSQL("CREATE table entityCategoryMap (id int identity(1,1), categoryId int, entityName varchar(255))")
+# writeSQL("CREATE table entityCategoryMap (id int identity(1,1), categoryId int, entityName varchar(255), itemId int)")
 # writeSQL("CREATE table sites (id siteId varchar(255), longitude float, latitude float)")
 # writeSQL("CREATE table entityTransactionMap (id int identity(1,1), entityId int, transactionId int)")
 # writeSQL("CREATE table individualItems (id int identity(1, 1) primary key, ncrItemId varchar(255), price float, description varchar(255))")
