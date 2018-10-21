@@ -35,15 +35,21 @@ def populateDB(siteDd):
             query = "INSERT into \"dbo\".\"individualTransactions\" (indItemId, dayOfWeek, hourOfDay, siteId) values ({}, {}, {}, N\'{}\' )".format(possibleMatch[0][0], utc_time.weekday(), utc_time.hour, siteId)
             db.writeSQL(query)
 
-@app.route("/transaction/all", methods=['GET'])
-def getAllTransactions():
-    res = db.readSQL("SELECT * FROM individualTransactions join individualItems on individualItems.id = indItemId")
+@app.route("/transaction/byIds", methods=['GET'])
+def getTransactionsByIds():
+    args = request.args.to_dict()
+    print(args)
+    min = args['startId']
+    max = args['endId']
+    res = db.readSQL("SELECT individualTransactions.id as id, individualTransactions.dayOfWeek as day, individualTransactions.hourOfDay as hour, \
+                     individualItems.price as price, description as description, individualTransactions.siteId as siteId\
+                     FROM individualTransactions join individualItems on individualItems.id = indItemId where individualTransactions.id >= {} and individualTransactions.id <= {}".format(min, max))
     toReturn = []
-    for row in toReturn:
-        toReturn.append({''})
+    for row in res:
+        toReturn.append({'id': row[0], 'day':row[1], 'hour': row[2], 'price': row[3], 'description': row[4], 'siteId': row[5]})
     return json.dumps(toReturn)
 
-@app.route("/transaction/category/autogen", methods=['POST'])
+@app.route("/transaction/category/autogen/all", methods=['POST'])
 def autogenAll():
     if request.json is not None and 'ids' in request.json.keys() and len(request.json['ids']) != 0:
         ids = request.json['ids']
@@ -61,6 +67,13 @@ def setCategory():
     transactionId = request.json['transactionId']
     res = db.writeSQL("UPDATE individualTransactions SET categoryId = {} where id = {}".format(categoryId, transactionId))
 
+@app.route("/category", methods=["POST"])
+def createCategory():
+    siteId = request.json['siteId']
+    categoryName = request.json['category']
+    db.writeSQL("insert into categories (siteId, description) values (N\'{}\', N\'{}\')".format(siteId, categoryName))
+    return json.dumps({"status": "success"})
+
 @app.route("/category/<siteid>", methods=['GET', 'POST'])
 def getCategories(siteid):
     if request.method == 'GET':
@@ -73,29 +86,54 @@ def getCategories(siteid):
         category = request.json['category']
         res = db.writeSQL("INSERT into categories (siteId, description) values ({}, N\'{}\')".format(siteid, category))
 
-@app.route("/transaction/stats/all", methods=["GET"])
+@app.route("/transaction/stats/all", methods=["POST"])
 def allTransactionData():
-    siteId = request.json['siteId']
-    day = request.json['day'] #0 - 6
-    hour = request.json['hour'] #0 - 23
-    cat = request.json['category']
-
-    return json.dumps([{'siteId': siteId, 'category': cat, 'day': day, 'hour': hour, 'avgPrice': 10.99, 'var': 1.2, "percentProfit": 0.10}])
+    if "day" in request.json.keys() and "hour" in request.json.keys():
+        day = request.json['day'] #0 - 6
+        hour = request.json['hour'] #0 - 23
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude, individualTransactions.siteId FROM individualTransactions \
+               join individualItems on individualItems.id = individualTransactions.indItemId \
+               join categories on categories.id = individualTransactions.categoryId \
+               join sites on individualTransactions.siteId = sites.id \
+               where dayOfWeek = {} and hourOfDay = {} \
+               group by individualTransactions.siteId, individualTransactions.categoryId, categories.description, longitude, latitude".format(day, hour))
+    else:
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude, individualTransactions.siteId FROM individualTransactions \
+               join individualItems on individualItems.id = individualTransactions.indItemId \
+               join categories on categories.id = individualTransactions.categoryId \
+               join sites on individualTransactions.siteId = sites.id \
+               group by individualTransactions.siteId, individualTransactions.categoryId, categories.description, longitude, latitude")
+    toRet = Dict()
+    i = 0;
+    sumPricesBySiteId = Dict()
+    for row in data:
+        toRet[i].siteId = row[5]
+        toRet[i].totalSales = row[0]
+        toRet[i].categoryId = row[1]
+        toRet[i].description = row[2]
+        toRet[i].longitude = row[3]
+        toRet[i].latitude = row[4]
+        i += 1
+        if row[5] in sumPricesBySiteId.keys():
+            sumPricesBySiteId[row[5]] += row[0]
+        else:
+            sumPricesBySiteId[row[5]] = row[0]
+    for j in range(i):
+        toRet[j].proportionOfSiteSales = toRet[j].totalSales / sumPricesBySiteId[toRet[j].siteId]
+    return json.dumps(toRet)
 
 @app.route("/transaction/transaction_freqs", methods=["POST"])
 def transactionFreqs():
-    categories = ['food', 'luxury', 'transportation', 'healthcare', 'other']
-    hardCodedVals = [0.4, 0.1, 0.2, 0.2, 0.1]
-
     siteId = request.json['siteId']
     if "day" in request.json.keys() and "hour" in request.json.keys():
         day = request.json['day'] #0 - 6
         hour = request.json['hour'] #0 - 23
 
-        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description FROM individualTransactions \
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude FROM individualTransactions \
                    join individualItems on individualItems.id = individualTransactions.indItemId \
                    join categories on categories.id = individualTransactions.categoryId \
-                   where individualTransactions.siteId = N\'{}\' and dayOfWeek = {} and hourOfDay = {} group by individualTransactions.categoryId, categories.description".format(siteId, day, hour))
+                   join sites on individualTransactions.siteId = sites.id \
+                   where individualTransactions.siteId = N\'{}\' and dayOfWeek = {} and hourOfDay = {} group by individualTransactions.categoryId, categories.description, longitude, latitude".format(siteId, day, hour))
         toRet = Dict()
         i = 0;
         for row in data:
@@ -103,13 +141,16 @@ def transactionFreqs():
             toRet[i].totalSales = row[0]
             toRet[i].categoryId = row[1]
             toRet[i].description = row[2]
+            toRet[i].longitude = row[3]
+            toRet[i].latitude = row[4]
             i += 1
         return json.dumps(toRet)
     else:
-        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description FROM individualTransactions \
+        data = db.readSQL("SELECT sum(price), individualTransactions.categoryId, categories.description, longitude, latitude FROM individualTransactions \
                    join individualItems on individualItems.id = individualTransactions.indItemId \
                    join categories on categories.id = individualTransactions.categoryId \
-                   where individualTransactions.siteId = N\'{}\' group by individualTransactions.categoryId, categories.description".format(siteId))
+                   join sites on individualTransactions.siteId = sites.id \
+                   where individualTransactions.siteId = N\'{}\' group by individualTransactions.categoryId, categories.description, longitude, latitude".format(siteId))
         toRet = Dict()
         i = 0;
         for row in data:
@@ -117,6 +158,8 @@ def transactionFreqs():
             toRet[i].totalSales = row[0]
             toRet[i].categoryId = row[1]
             toRet[i].description = row[2]
+            toRet[i].longitude = row[3]
+            toRet[i].latitude = row[4]
             i += 1
         return json.dumps(toRet)
 
@@ -126,22 +169,27 @@ def transactionStatsData():
 
     day = request.json['day'] #0 - 6
     hour = request.json['hour'] #0 - 23
-    cat = request.json['category']
+    cat = request.json['categoryId']
     if 'siteId' in request.json.keys():
         siteId = request.json['siteId']
-        res = db.readSQL("SELECT id, (select price from individualItems where individualItems.id=individualTransactions.indItemId) as price FROM individualTransactions where dayOfWeek = {} and hourOfDay = {} and category = N\'{}\' and siteId = N\'{}\'".format(day, hour, cat, siteId))
+
+        res = db.readSQL("SELECT individualTransactions.id, price FROM individualTransactions JOIN individualItems on indItemId = individualItems.id where dayOfWeek = {} and hourOfDay = {} and categoryId = {} and siteId = N\'{}\'".format(day, hour, cat, siteId))
 
     else:
         siteId = None
-        res = db.readSQL("SELECT id, (select price from individualItems where individualItems.id=individualTransactions.indItemId) as price FROM individualTransactions where dayOfWeek = {} and hourOfDay = {} and category = N\'{}\'".format(day, hour, cat))
+        res = db.readSQL("SELECT individualTransactions.id, price FROM individualTransactions  JOIN individualItems on indItemId = individualItems.id where dayOfWeek = {} and hourOfDay = {} and categoryId = {}".format(day, hour, cat))
 
     prices = []
     for row in res:
         prices.append(row[1])
-    if 'siteId' in request.json.keys():
-        return json.dumps({'siteId': siteId, 'category': cat, 'day': day, 'hour': hour, 'avgPrice': mean(prices), 'var': variance(prices)})
+    if len(prices) <= 1:
+        varPrice = 0
     else:
-        return json.dumps({'category': cat, 'day': day, 'hour': hour, 'avgPrice': mean(prices), 'var': variance(prices)})
+        varPrice = variance(prices)
+    if 'siteId' in request.json.keys():
+        return json.dumps({'siteId': siteId, 'category': cat, 'day': day, 'hour': hour, 'avgPrice': mean(prices), 'var': varPrice})
+    else:
+        return json.dumps({'category': cat, 'day': day, 'hour': hour, 'avgPrice': mean(prices), 'var': varPrice})
 
 
 # @app.route("/siteEvents", methods=["GET"])

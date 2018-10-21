@@ -23,7 +23,6 @@ def generateConceptForTransaction(transactionId):
     concept = re.sub("\'", '', concept)
     print(res[0][1])
     if res[0][1] is None or res[0][1] == "false":
-        print("UPDATE individualTransactions SET category = N\'{}\' where id = {}".format(concept, transactionId))
         siteId = db.readSQL("SELECT siteId from individualTransactions where individualTransactions.id = N\'{}\'".format(transactionId))[0][0]
         db.writeSQL("INSERT into categories (siteId, description) VALUES (N\'{}\', N\'{}\')".format(siteId, concept))
         conceptId = db.readSQL("SELECT id FROM categories where siteId = N\'{}\' and description = N\'{}\'".format(siteId, concept))[0][0]
